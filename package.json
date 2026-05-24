@@ -1,0 +1,35 @@
+{
+  "name": "myplans",
+  "displayName": "MyPlans",
+  "description": "Personal plans and daily tasks manager from YAML files",
+  "version": "1.0.0",
+  "publisher": "myplans",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
+  "main": "./src/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        { "id": "myplans-sidebar", "title": "MyPlans", "icon": "media/icon.svg" }
+      ]
+    },
+    "views": {
+      "myplans-sidebar": [
+        { "type": "webview", "id": "myplans.mainView", "name": "Tasks" }
+      ]
+    },
+    "commands": [
+      { "command": "myplans.refresh",     "title": "MyPlans: Refresh" },
+      { "command": "myplans.deploy",      "title": "MyPlans: Deploy to Git" },
+      { "command": "myplans.addCategory", "title": "MyPlans: Add Category" }
+    ]
+  },
+  "scripts": {
+    "package": "vsce package"
+  },
+  "devDependencies": {
+    "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^2.22.0"
+  }
+}
