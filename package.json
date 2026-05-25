@@ -2,7 +2,7 @@
   "name": "myplans",
   "displayName": "MyPlans",
   "description": "Personal plans and daily tasks manager from YAML files",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "publisher": "myplans",
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],

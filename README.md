@@ -30,7 +30,7 @@ Search for **MyPlans** in the Extensions panel (`Ctrl+Shift+X`) and click **Inst
 ### From a `.vsix` file
 
 ```bash
-code --install-extension myplans-1.0.0.vsix
+code --install-extension myplans-1.0.1.vsix
 ```
 
 Or: Extensions panel → `⋯` menu → **Install from VSIX…**
