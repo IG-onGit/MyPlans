@@ -52,14 +52,6 @@ code .
 # 4 – Press F5 to launch the Extension Development Host
 ```
 
-### Build a `.vsix` package
-
-```bash
-npm install -g @vscode/vsce
-vsce package
-# → myplans-1.0.0.vsix
-```
-
 ---
 
 ## Getting Started
@@ -145,25 +137,6 @@ git push
 - The workspace must be a Git repository (`git init` or cloned).
 - A remote must be configured (`git remote add origin …`).
 - Your credentials or SSH key must allow push access.
-
----
-
-## Project Structure
-
-```
-myplans/
-├── package.json              Extension manifest & contribution points
-├── README.md                 This file
-├── media/
-│   └── icon.svg              Activity bar icon
-└── src/
-    ├── extension.js          activate() / deactivate()
-    ├── webviewProvider.js    Sidebar webview - Monokai UI + message handling
-    ├── scanner.js            Workspace YAML scanner (categories → topics → tasks)
-    ├── yamlParser.js         Task parser, comment toggler, edit/delete helpers
-    ├── fileOps.js            File-system operations (create, rename, delete)
-    └── gitDeploy.js          git add / commit / push helper
-```
 
 ---
 
