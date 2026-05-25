@@ -17,6 +17,7 @@ class MyPlansWebviewProvider {
     this._context = context;
     this._scanner = scanner;
     this._view = null;
+    this._openSections = new Set(); // persists across refreshes
   }
 
   resolveWebviewView(webviewView) {
@@ -55,6 +56,7 @@ class MyPlansWebviewProvider {
         case 'deleteTopic':       await this._deleteTopic(msg.filePath, msg.name);                                  break;
         case 'deleteTask':        await this._deleteTask(msg.filePath, msg.taskLineIndex, msg.stepLineIndices);     break;
         case 'deleteStep':        await this._deleteStep(msg.filePath, msg.lineIndex);                              break;
+        case 'saveState':          this._openSections = new Set(msg.openSections);                                     break;
       }
     });
   }
@@ -63,7 +65,7 @@ class MyPlansWebviewProvider {
     const cats = await this._scanner.scanWorkspace();
     if (this._view) {
       const gitStatus = getGitStatus();
-      this._view.webview.html = buildHtml(cats, gitStatus);
+      this._view.webview.html = buildHtml(cats, gitStatus, this._openSections);
     }
   }
 
@@ -202,7 +204,9 @@ class MyPlansWebviewProvider {
 function attr(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 function esc(v)  { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function buildHtml(categories, gitStatus) {
+function buildHtml(categories, gitStatus, openSections) {
+  openSections = openSections || new Set();
+  const isOpen = (id) => openSections.has(id);
   const isGit = gitStatus && gitStatus.isGit;
   const hasChanges = gitStatus && gitStatus.hasChanges;
   const deployDisabled = !isGit || !hasChanges;
@@ -288,7 +292,7 @@ function buildHtml(categories, gitStatus) {
           tasksHtml += `
           <div class="task-block">
             <div class="task-header" data-toggle="tkb-${ci}-${ti}-${tki}">
-              <span class="task-chevron open" data-chevron="tkb-${ci}-${ti}-${tki}">▶</span>
+              <span class="task-chevron${isOpen(`tkb-${ci}-${ti}-${tki}`) ? ' open' : ''}" data-chevron="tkb-${ci}-${ti}-${tki}">▶</span>
               <span class="task-name">${esc(task.name)}</span>
               <span class="task-badge">${taskDone}/${task.steps.length}</span>
               <div class="row-actions task-actions">
@@ -312,7 +316,7 @@ function buildHtml(categories, gitStatus) {
                   data-lineindex="${task.taskLineIndex}">↗</button>
               </div>
             </div>
-            <div class="steps-body" id="tkb-${ci}-${ti}-${tki}">
+            <div class="steps-body${isOpen(`tkb-${ci}-${ti}-${tki}`) ? '' : ' closed'}" id="tkb-${ci}-${ti}-${tki}">
               ${stepsHtml || '<div class="no-items">No steps yet — click + Step to add one</div>'}
             </div>
           </div>`;
@@ -321,7 +325,7 @@ function buildHtml(categories, gitStatus) {
         topicsHtml += `
         <div class="topic-block">
           <div class="topic-header" data-toggle="tpb-${ci}-${ti}">
-            <span class="topic-chevron open" data-chevron="tpb-${ci}-${ti}">▶</span>
+            <span class="topic-chevron${isOpen(`tpb-${ci}-${ti}`) ? ' open' : ''}" data-chevron="tpb-${ci}-${ti}">▶</span>
             <span class="file-icon">◈</span>
             <span class="topic-name">${esc(topic.name)}</span>
             <span class="topic-badge">${topicDone}/${topicSteps}</span>
@@ -343,7 +347,7 @@ function buildHtml(categories, gitStatus) {
                 data-lineindex="0">↗</button>
             </div>
           </div>
-          <div class="topic-body" id="tpb-${ci}-${ti}">
+          <div class="topic-body${isOpen(`tpb-${ci}-${ti}`) ? '' : ' closed'}" id="tpb-${ci}-${ti}">
             ${tasksHtml || '<div class="no-items" style="padding-left:32px">No tasks yet — click + Task to add one</div>'}
           </div>
         </div>`;
@@ -352,7 +356,7 @@ function buildHtml(categories, gitStatus) {
       catsHtml += `
       <div class="cat-section">
         <div class="cat-header" data-toggle="cb-${ci}">
-          <span class="cat-chevron open" data-chevron="cb-${ci}">▶</span>
+          <span class="cat-chevron${isOpen(`cb-${ci}`) ? ' open' : ''}" data-chevron="cb-${ci}">▶</span>
           <span class="folder-icon">▣</span>
           <span class="cat-name">${esc(cat.name)}</span>
           <div class="mini-bar" title="${catDone}/${catSteps}">
@@ -373,7 +377,7 @@ function buildHtml(categories, gitStatus) {
               data-name="${attr(cat.name)}">✕</button>
           </div>
         </div>
-        <div class="cat-body" id="cb-${ci}">
+        <div class="cat-body${isOpen(`cb-${ci}`) ? '' : ' closed'}" id="cb-${ci}">
           ${topicsHtml || '<div class="no-items" style="padding-left:28px">No topics yet — click + Topic to add one</div>'}
         </div>
       </div>`;
@@ -731,12 +735,28 @@ ${catsHtml}
     }
   }
 
+  // Track which sections are open (client-side mirror of provider._openSections)
+  const _openSet = new Set(
+    Array.from(document.querySelectorAll('[id]')).filter(el =>
+      (el.classList.contains('cat-body') ||
+       el.classList.contains('topic-body') ||
+       el.classList.contains('steps-body')) &&
+      !el.classList.contains('closed')
+    ).map(el => el.id)
+  );
+
+  function _saveState() {
+    vscode.postMessage({ command: 'saveState', openSections: Array.from(_openSet) });
+  }
+
   function toggleSection(bodyId) {
     const body = document.getElementById(bodyId);
     if (!body) return;
     const isClosed = body.classList.toggle('closed');
     const chev = document.querySelector('[data-chevron="' + bodyId + '"]');
     if (chev) chev.classList.toggle('open', !isClosed);
+    if (isClosed) { _openSet.delete(bodyId); } else { _openSet.add(bodyId); }
+    _saveState();
   }
 
   function doDeploy() {
