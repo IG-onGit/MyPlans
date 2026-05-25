@@ -3,7 +3,13 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const { toggleLineComment } = require('./yamlParser');
-const { createCategory, createTopic, addTask, addStep } = require('./fileOps');
+const {
+  createCategory, createTopic, addTask, addStep,
+  renameCategory, deleteCategory,
+  renameTopic, deleteTopic,
+  editTask, removeTask,
+  editStepText, deleteStep
+} = require('./fileOps');
 
 class MyPlansWebviewProvider {
   constructor(context, scanner) {
@@ -17,14 +23,12 @@ class MyPlansWebviewProvider {
     webviewView.webview.options = { enableScripts: true };
     this._refresh();
 
-    // Watch for external file changes
     const watcher = vscode.workspace.createFileSystemWatcher('**/*.{yml,yaml}');
     watcher.onDidChange(() => this._refresh());
     watcher.onDidCreate(() => this._refresh());
     watcher.onDidDelete(() => this._refresh());
     this._context.subscriptions.push(watcher);
 
-    // Also watch for new directories
     const dirWatcher = vscode.workspace.createFileSystemWatcher('**/');
     dirWatcher.onDidCreate(() => this._refresh());
     dirWatcher.onDidDelete(() => this._refresh());
@@ -32,14 +36,24 @@ class MyPlansWebviewProvider {
 
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.command) {
-        case 'refresh':      await this._refresh();                                   break;
-        case 'toggleStep':   await this._toggleStep(msg.filePath, msg.lineIndex);     break;
-        case 'openFile':     await this._openFile(msg.filePath, msg.lineIndex);       break;
-        case 'addCategory':  await this._addCategory();                               break;
-        case 'addTopic':     await this._addTopic(msg.categoryFolder);               break;
-        case 'addTask':      await this._addTask(msg.filePath);                       break;
-        case 'addStep':      await this._addStep(msg.filePath, msg.taskLineIndex);    break;
-        case 'deploy':       await this._deploy();                                    break;
+        case 'refresh':           await this._refresh();                                                              break;
+        case 'toggleStep':        await this._toggleStep(msg.filePath, msg.lineIndex);                               break;
+        case 'openFile':          await this._openFile(msg.filePath, msg.lineIndex);                                 break;
+        case 'addCategory':       await this._addCategory();                                                         break;
+        case 'addTopic':          await this._addTopic(msg.categoryFolder);                                          break;
+        case 'addTask':           await this._addTask(msg.filePath);                                                 break;
+        case 'addStep':           await this._addStep(msg.filePath, msg.taskLineIndex);                              break;
+        case 'deploy':            await this._deploy();                                                              break;
+        // edit
+        case 'editCategory':      await this._editCategory(msg.folderPath, msg.currentName);                        break;
+        case 'editTopic':         await this._editTopic(msg.filePath, msg.currentName);                             break;
+        case 'editTask':          await this._editTask(msg.filePath, msg.taskLineIndex, msg.currentName);           break;
+        case 'editStep':          await this._editStep(msg.filePath, msg.lineIndex, msg.currentText);               break;
+        // delete
+        case 'deleteCategory':    await this._deleteCategory(msg.folderPath, msg.name);                             break;
+        case 'deleteTopic':       await this._deleteTopic(msg.filePath, msg.name);                                  break;
+        case 'deleteTask':        await this._deleteTask(msg.filePath, msg.taskLineIndex, msg.stepLineIndices);     break;
+        case 'deleteStep':        await this._deleteStep(msg.filePath, msg.lineIndex);                              break;
       }
     });
   }
@@ -56,9 +70,7 @@ class MyPlansWebviewProvider {
       const content = fs.readFileSync(filePath, 'utf8');
       fs.writeFileSync(filePath, toggleLineComment(content, Number(lineIndex)), 'utf8');
       await this._refresh();
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    } catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _openFile(filePath, lineIndex) {
@@ -68,73 +80,103 @@ class MyPlansWebviewProvider {
       const pos = new vscode.Position(Number(lineIndex) || 0, 0);
       ed.selection = new vscode.Selection(pos, pos);
       ed.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    } catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _addCategory() {
-    const name = await vscode.window.showInputBox({
-      title: 'MyPlans - New Category',
-      prompt: 'Enter category name',
-      placeHolder: 'e.g. Work Projects',
-      ignoreFocusOut: true
-    });
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - New Category', prompt: 'Enter category name', placeHolder: 'e.g. Work Projects', ignoreFocusOut: true });
     if (!name || !name.trim()) return;
-    try {
-      createCategory(name.trim());
-      await this._refresh();
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    try { createCategory(name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _addTopic(categoryFolder) {
-    const name = await vscode.window.showInputBox({
-      title: 'MyPlans - New Topic',
-      prompt: 'Enter topic file name',
-      placeHolder: 'e.g. Sprint 12',
-      ignoreFocusOut: true
-    });
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - New Topic', prompt: 'Enter topic file name', placeHolder: 'e.g. Sprint 12', ignoreFocusOut: true });
     if (!name || !name.trim()) return;
-    try {
-      createTopic(categoryFolder, name.trim());
-      await this._refresh();
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    try { createTopic(categoryFolder, name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _addTask(filePath) {
-    const name = await vscode.window.showInputBox({
-      title: 'MyPlans - New Task',
-      prompt: 'Enter task name',
-      placeHolder: 'e.g. Set up CI pipeline',
-      ignoreFocusOut: true
-    });
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - New Task', prompt: 'Enter task name', placeHolder: 'e.g. Set up CI pipeline', ignoreFocusOut: true });
     if (!name || !name.trim()) return;
-    try {
-      addTask(filePath, name.trim());
-      await this._refresh();
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    try { addTask(filePath, name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _addStep(filePath, taskLineIndex) {
-    const text = await vscode.window.showInputBox({
-      title: 'MyPlans - New Step',
-      prompt: 'Enter step description',
-      placeHolder: 'e.g. Install dependencies',
-      ignoreFocusOut: true
-    });
+    const text = await vscode.window.showInputBox({ title: 'MyPlans - New Step', prompt: 'Enter step description', placeHolder: 'e.g. Install dependencies', ignoreFocusOut: true });
     if (!text || !text.trim()) return;
-    try {
-      addStep(filePath, Number(taskLineIndex), text.trim());
-      await this._refresh();
-    } catch (e) {
-      vscode.window.showErrorMessage(`MyPlans: ${e.message}`);
-    }
+    try { addStep(filePath, Number(taskLineIndex), text.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  // ── edit handlers ────────────────────────────────────────────────────────
+
+  async _editCategory(folderPath, currentName) {
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - Rename Category', prompt: 'Enter new name', value: currentName, ignoreFocusOut: true });
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try { renameCategory(folderPath, name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _editTopic(filePath, currentName) {
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - Rename Topic', prompt: 'Enter new name', value: currentName, ignoreFocusOut: true });
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try { renameTopic(filePath, name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _editTask(filePath, taskLineIndex, currentName) {
+    const name = await vscode.window.showInputBox({ title: 'MyPlans - Rename Task', prompt: 'Enter new task name', value: currentName, ignoreFocusOut: true });
+    if (!name || !name.trim() || name.trim() === currentName) return;
+    try { editTask(filePath, Number(taskLineIndex), name.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _editStep(filePath, lineIndex, currentText) {
+    const text = await vscode.window.showInputBox({ title: 'MyPlans - Edit Step', prompt: 'Enter new step text', value: currentText, ignoreFocusOut: true });
+    if (!text || !text.trim() || text.trim() === currentText) return;
+    try { editStepText(filePath, Number(lineIndex), text.trim()); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  // ── delete handlers ──────────────────────────────────────────────────────
+
+  async _deleteCategory(folderPath, name) {
+    const choice = await vscode.window.showWarningMessage(
+      `Delete category "${name}" and ALL its topics?`, { modal: true }, 'Delete'
+    );
+    if (choice !== 'Delete') return;
+    try { deleteCategory(folderPath); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _deleteTopic(filePath, name) {
+    const choice = await vscode.window.showWarningMessage(
+      `Delete topic "${name}"?`, { modal: true }, 'Delete'
+    );
+    if (choice !== 'Delete') return;
+    try { deleteTopic(filePath); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _deleteTask(filePath, taskLineIndex, stepLineIndices) {
+    const choice = await vscode.window.showWarningMessage(
+      `Delete this task and all its steps?`, { modal: true }, 'Delete'
+    );
+    if (choice !== 'Delete') return;
+    try { removeTask(filePath, Number(taskLineIndex), stepLineIndices); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _deleteStep(filePath, lineIndex) {
+    const choice = await vscode.window.showWarningMessage(
+      `Delete this step?`, { modal: true }, 'Delete'
+    );
+    if (choice !== 'Delete') return;
+    try { deleteStep(filePath, Number(lineIndex)); await this._refresh(); }
+    catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
 
   async _deploy() {
@@ -155,17 +197,10 @@ class MyPlansWebviewProvider {
 /* HTML builder                                                                 */
 /* ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Safe HTML attribute encoding - used for ALL data-* values */
-function attr(v) {
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
-}
-/** Safe HTML content encoding */
-function esc(v) {
-  return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-}
+function attr(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
+function esc(v)  { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
 function buildHtml(categories) {
-  // ── global metrics ────────────────────────────────────────────────────────
   let totalSteps = 0, doneSteps = 0, totalTasks = 0, totalTopics = 0;
   for (const cat of categories) {
     totalTopics += cat.topics.length;
@@ -179,7 +214,6 @@ function buildHtml(categories) {
   }
   const pct = totalSteps > 0 ? Math.round((doneSteps / totalSteps) * 100) : 0;
 
-  // ── categories HTML ───────────────────────────────────────────────────────
   let catsHtml = '';
 
   if (categories.length === 0) {
@@ -212,6 +246,7 @@ function buildHtml(categories) {
         for (let tki = 0; tki < topic.tasks.length; tki++) {
           const task = topic.tasks[tki];
           const taskDone = task.steps.filter(s => s.commented).length;
+          const stepIndices = task.steps.map(s => s.lineIndex);
 
           let stepsHtml = '';
           for (let si = 0; si < task.steps.length; si++) {
@@ -227,27 +262,50 @@ function buildHtml(categories) {
                 />
               </label>
               <span class="step-text">${esc(step.text)}</span>
-              <button class="goto-btn always-visible" title="Open file at this line"
-                data-action="openFile"
-                data-filepath="${attr(topic.absolutePath)}"
-                data-lineindex="${step.lineIndex}">↗</button>
+              <div class="row-actions">
+                <button class="icon-btn edit-btn" title="Edit step"
+                  data-action="editStep"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${step.lineIndex}"
+                  data-currenttext="${attr(step.text)}">✎</button>
+                <button class="icon-btn del-btn" title="Delete step"
+                  data-action="deleteStep"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${step.lineIndex}">✕</button>
+                <button class="goto-btn always-visible" title="Open file at this line"
+                  data-action="openFile"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${step.lineIndex}">↗</button>
+              </div>
             </div>`;
           }
 
           tasksHtml += `
           <div class="task-block">
-            <div class="task-header">
+            <div class="task-header" data-toggle="tkb-${ci}-${ti}-${tki}">
               <span class="task-chevron open" data-chevron="tkb-${ci}-${ti}-${tki}">▶</span>
               <span class="task-name">${esc(task.name)}</span>
               <span class="task-badge">${taskDone}/${task.steps.length}</span>
-              <button class="add-btn"
-                data-action="addStep"
-                data-filepath="${attr(topic.absolutePath)}"
-                data-tasklineindex="${task.taskLineIndex}">+ Step</button>
-              <button class="goto-btn" title="Open file at task"
-                data-action="openFile"
-                data-filepath="${attr(topic.absolutePath)}"
-                data-lineindex="${task.taskLineIndex}">↗</button>
+              <div class="row-actions task-actions">
+                <button class="add-btn"
+                  data-action="addStep"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-tasklineindex="${task.taskLineIndex}">+ Step</button>
+                <button class="icon-btn edit-btn" title="Rename task"
+                  data-action="editTask"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-tasklineindex="${task.taskLineIndex}"
+                  data-currentname="${attr(task.name)}">✎</button>
+                <button class="icon-btn del-btn" title="Delete task"
+                  data-action="deleteTask"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-tasklineindex="${task.taskLineIndex}"
+                  data-steplineindices="${attr(JSON.stringify(stepIndices))}">✕</button>
+                <button class="goto-btn" title="Open file at task"
+                  data-action="openFile"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${task.taskLineIndex}">↗</button>
+              </div>
             </div>
             <div class="steps-body" id="tkb-${ci}-${ti}-${tki}">
               ${stepsHtml || '<div class="no-items">No steps yet - click + Step to add one</div>'}
@@ -262,13 +320,23 @@ function buildHtml(categories) {
             <span class="file-icon">◈</span>
             <span class="topic-name">${esc(topic.name)}</span>
             <span class="topic-badge">${topicDone}/${topicSteps}</span>
-            <button class="add-btn"
-              data-action="addTask"
-              data-filepath="${attr(topic.absolutePath)}">+ Task</button>
-            <button class="goto-btn" title="Open file"
-              data-action="openFile"
-              data-filepath="${attr(topic.absolutePath)}"
-              data-lineindex="0">↗</button>
+            <div class="row-actions topic-actions">
+              <button class="add-btn"
+                data-action="addTask"
+                data-filepath="${attr(topic.absolutePath)}">+ Task</button>
+              <button class="icon-btn edit-btn" title="Rename topic"
+                data-action="editTopic"
+                data-filepath="${attr(topic.absolutePath)}"
+                data-currentname="${attr(topic.name)}">✎</button>
+              <button class="icon-btn del-btn" title="Delete topic"
+                data-action="deleteTopic"
+                data-filepath="${attr(topic.absolutePath)}"
+                data-name="${attr(topic.name)}">✕</button>
+              <button class="goto-btn" title="Open file"
+                data-action="openFile"
+                data-filepath="${attr(topic.absolutePath)}"
+                data-lineindex="0">↗</button>
+            </div>
           </div>
           <div class="topic-body" id="tpb-${ci}-${ti}">
             ${tasksHtml || '<div class="no-items" style="padding-left:32px">No tasks yet - click + Task to add one</div>'}
@@ -286,9 +354,19 @@ function buildHtml(categories) {
             <div class="mini-fill" style="width:${catPct}%"></div>
           </div>
           <span class="cat-badge">${catDone}/${catSteps}</span>
-          <button class="add-btn"
-            data-action="addTopic"
-            data-categoryfolder="${attr(cat.folderPath)}">+ Topic</button>
+          <div class="row-actions cat-actions">
+            <button class="add-btn"
+              data-action="addTopic"
+              data-categoryfolder="${attr(cat.folderPath)}">+ Topic</button>
+            <button class="icon-btn edit-btn" title="Rename category"
+              data-action="editCategory"
+              data-folderpath="${attr(cat.folderPath)}"
+              data-currentname="${attr(cat.name)}">✎</button>
+            <button class="icon-btn del-btn" title="Delete category"
+              data-action="deleteCategory"
+              data-folderpath="${attr(cat.folderPath)}"
+              data-name="${attr(cat.name)}">✕</button>
+          </div>
         </div>
         <div class="cat-body" id="cb-${ci}">
           ${topicsHtml || '<div class="no-items" style="padding-left:28px">No topics yet - click + Topic to add one</div>'}
@@ -297,7 +375,6 @@ function buildHtml(categories) {
     }
   }
 
-  // ── full document ─────────────────────────────────────────────────────────
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -374,6 +451,30 @@ body {
 /* ── content ── */
 .content { padding-bottom: 72px; }
 
+/* ── row-actions group (edit + delete + goto) ── */
+.row-actions {
+  display: flex; align-items: center; gap: 2px;
+  opacity: 0; transition: opacity var(--ease); flex-shrink: 0; margin-left: auto;
+}
+.cat-header:hover .cat-actions,
+.topic-header:hover .topic-actions,
+.task-header:hover .task-actions,
+.step-row:hover .row-actions { opacity: 1; }
+/* Steps keep goto slightly visible always */
+.step-row .row-actions { opacity: 0; }
+.step-row:hover .row-actions { opacity: 1; }
+
+/* ── icon buttons (edit / delete) ── */
+.icon-btn {
+  background: transparent; border: none; cursor: pointer;
+  font-size: 11px; padding: 1px 4px; border-radius: 2px;
+  transition: all var(--ease); flex-shrink: 0; line-height: 1;
+}
+.edit-btn { color: var(--muted); }
+.edit-btn:hover { color: var(--blue); background: rgba(102,217,239,.12); }
+.del-btn { color: var(--muted); }
+.del-btn:hover { color: var(--red); background: rgba(249,38,114,.12); }
+
 /* ── category ── */
 .cat-section { border-bottom: 1px solid var(--border); }
 .cat-header {
@@ -387,9 +488,9 @@ body {
   font-size: 7px; color: var(--muted); transition: transform var(--ease);
   flex-shrink: 0; width: 9px; display: inline-block;
 }
-.cat-chevron.open, .topic-chevron.open { transform: rotate(90deg); }
+.cat-chevron.open, .topic-chevron.open, .task-chevron.open { transform: rotate(90deg); }
 .folder-icon { color: var(--orange); font-size: 11px; }
-.cat-name { font-family: var(--mono); font-size: 11px; color: var(--orange); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; flex: 1; }
+.cat-name { font-family: var(--mono); font-size: 11px; color: var(--orange); font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
 .cat-badge { font-family: var(--mono); font-size: 9px; color: var(--muted); background: var(--bg4); border: 1px solid var(--border); border-radius: 2px; padding: 1px 5px; }
 .mini-bar { width: 36px; height: 3px; background: var(--bg4); border-radius: 9px; overflow: hidden; flex-shrink: 0; }
 .mini-fill { height: 100%; background: var(--green); border-radius: 9px; }
@@ -403,7 +504,7 @@ body {
 }
 .topic-header:hover { background: var(--surface); }
 .file-icon { color: var(--blue); font-size: 11px; flex-shrink: 0; }
-.topic-name { font-family: var(--mono); font-size: 11px; color: var(--blue); flex: 1; }
+.topic-name { font-family: var(--mono); font-size: 11px; color: var(--blue); }
 .topic-badge { font-family: var(--mono); font-size: 9px; color: var(--muted); }
 .topic-body.closed { display: none; }
 
@@ -411,9 +512,9 @@ body {
 .task-block { }
 .task-header {
   display: flex; align-items: center; gap: 5px; padding: 4px 10px 4px 32px;
-  background: var(--bg3); cursor: default; border-top: 1px solid var(--bg4);
+  background: var(--bg3); cursor: pointer; border-top: 1px solid var(--bg4); user-select: none;
 }
-.task-name { font-family: var(--mono); font-size: 10px; color: var(--yellow); font-weight: 600; flex: 1; }
+.task-name { font-family: var(--mono); font-size: 10px; color: var(--yellow); font-weight: 600; }
 .task-badge { font-family: var(--mono); font-size: 9px; color: var(--muted); }
 .steps-body { display: block; }
 .steps-body.closed { display: none; }
@@ -469,14 +570,9 @@ body {
   background: transparent; border: none; color: var(--muted); cursor: pointer;
   font-size: 12px; padding: 1px 4px; border-radius: 2px;
   transition: all var(--ease); flex-shrink: 0;
-  opacity: 0;   /* hidden by default, shown on row hover */
 }
-.step-row:hover .goto-btn,
-.topic-header:hover .goto-btn,
-.task-header:hover .goto-btn { opacity: 1; }
-.goto-btn.always-visible { opacity: 0.35; }  /* steps always show faintly */
-.step-row:hover .goto-btn.always-visible,
-.goto-btn:hover { opacity: 1; color: var(--blue); }
+.goto-btn.always-visible { opacity: 0.35; }
+.goto-btn:hover { color: var(--blue); }
 
 /* ── no items ── */
 .no-items { padding: 5px 10px; font-size: 10px; color: var(--muted); font-family: var(--mono); }
@@ -548,13 +644,10 @@ ${catsHtml}
 (function() {
   const vscode = acquireVsCodeApi();
 
-  // ── single delegated listener for ALL interactions ──────────────────────
   document.addEventListener('click', function(e) {
-    // collapse/expand via data-toggle on header rows
     const toggleTarget = e.target.closest('[data-toggle]');
     const actionTarget = e.target.closest('[data-action]');
 
-    // if click is on an action button inside a toggleable header, action wins
     if (actionTarget) {
       e.stopPropagation();
       handleAction(actionTarget);
@@ -565,7 +658,6 @@ ${catsHtml}
     }
   });
 
-  // checkboxes need 'change' event
   document.addEventListener('change', function(e) {
     if (e.target.matches('.step-cb')) {
       const el = e.target;
@@ -583,26 +675,37 @@ ${catsHtml}
 
     switch (action) {
       case 'addCategory':
-        vscode.postMessage({ command: 'addCategory' });
-        break;
+        vscode.postMessage({ command: 'addCategory' }); break;
       case 'addTopic':
-        vscode.postMessage({ command: 'addTopic', categoryFolder: d.categoryfolder });
-        break;
+        vscode.postMessage({ command: 'addTopic', categoryFolder: d.categoryfolder }); break;
       case 'addTask':
-        vscode.postMessage({ command: 'addTask', filePath: d.filepath });
-        break;
+        vscode.postMessage({ command: 'addTask', filePath: d.filepath }); break;
       case 'addStep':
-        vscode.postMessage({ command: 'addStep', filePath: d.filepath, taskLineIndex: Number(d.tasklineindex) });
-        break;
+        vscode.postMessage({ command: 'addStep', filePath: d.filepath, taskLineIndex: Number(d.tasklineindex) }); break;
       case 'openFile':
-        vscode.postMessage({ command: 'openFile', filePath: d.filepath, lineIndex: Number(d.lineindex) });
-        break;
+        vscode.postMessage({ command: 'openFile', filePath: d.filepath, lineIndex: Number(d.lineindex) }); break;
       case 'refresh':
-        vscode.postMessage({ command: 'refresh' });
-        break;
+        vscode.postMessage({ command: 'refresh' }); break;
       case 'deploy':
-        doDeploy();
-        break;
+        doDeploy(); break;
+      // edit
+      case 'editCategory':
+        vscode.postMessage({ command: 'editCategory', folderPath: d.folderpath, currentName: d.currentname }); break;
+      case 'editTopic':
+        vscode.postMessage({ command: 'editTopic', filePath: d.filepath, currentName: d.currentname }); break;
+      case 'editTask':
+        vscode.postMessage({ command: 'editTask', filePath: d.filepath, taskLineIndex: Number(d.tasklineindex), currentName: d.currentname }); break;
+      case 'editStep':
+        vscode.postMessage({ command: 'editStep', filePath: d.filepath, lineIndex: Number(d.lineindex), currentText: d.currenttext }); break;
+      // delete
+      case 'deleteCategory':
+        vscode.postMessage({ command: 'deleteCategory', folderPath: d.folderpath, name: d.name }); break;
+      case 'deleteTopic':
+        vscode.postMessage({ command: 'deleteTopic', filePath: d.filepath, name: d.name }); break;
+      case 'deleteTask':
+        vscode.postMessage({ command: 'deleteTask', filePath: d.filepath, taskLineIndex: Number(d.tasklineindex), stepLineIndices: JSON.parse(d.steplineindices || '[]') }); break;
+      case 'deleteStep':
+        vscode.postMessage({ command: 'deleteStep', filePath: d.filepath, lineIndex: Number(d.lineindex) }); break;
     }
   }
 
@@ -610,7 +713,6 @@ ${catsHtml}
     const body = document.getElementById(bodyId);
     if (!body) return;
     const isClosed = body.classList.toggle('closed');
-    // find chevron that points to this body
     const chev = document.querySelector('[data-chevron="' + bodyId + '"]');
     if (chev) chev.classList.toggle('open', !isClosed);
   }
@@ -621,8 +723,8 @@ ${catsHtml}
     const icon  = document.getElementById('deployIcon');
     btn.classList.add('deploying');
     btn.disabled = true;
-    label.textContent = 'Deploying…';
-    icon.textContent  = '⟳';
+    label.textContent = 'Deploying\u2026';
+    icon.textContent  = '\u27F3';
     setStatus('', '');
     vscode.postMessage({ command: 'deploy' });
   }
@@ -642,7 +744,7 @@ ${catsHtml}
       btn.classList.remove('deploying');
       btn.disabled = false;
       label.textContent = 'Deploy to Git';
-      icon.textContent  = '↑';
+      icon.textContent  = '\u2191';
       setStatus(msg.message, msg.success ? 'ok' : 'err');
       if (msg.success) setTimeout(function() { setStatus('', ''); }, 5000);
     }
