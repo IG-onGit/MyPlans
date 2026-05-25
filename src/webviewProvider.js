@@ -308,7 +308,7 @@ function buildHtml(categories) {
               </div>
             </div>
             <div class="steps-body" id="tkb-${ci}-${ti}-${tki}">
-              ${stepsHtml || '<div class="no-items">No steps yet - click + Step to add one</div>'}
+              ${stepsHtml || '<div class="no-items">No steps yet — click + Step to add one</div>'}
             </div>
           </div>`;
         }
@@ -339,7 +339,7 @@ function buildHtml(categories) {
             </div>
           </div>
           <div class="topic-body" id="tpb-${ci}-${ti}">
-            ${tasksHtml || '<div class="no-items" style="padding-left:32px">No tasks yet - click + Task to add one</div>'}
+            ${tasksHtml || '<div class="no-items" style="padding-left:32px">No tasks yet — click + Task to add one</div>'}
           </div>
         </div>`;
       }
@@ -369,7 +369,7 @@ function buildHtml(categories) {
           </div>
         </div>
         <div class="cat-body" id="cb-${ci}">
-          ${topicsHtml || '<div class="no-items" style="padding-left:28px">No topics yet - click + Topic to add one</div>'}
+          ${topicsHtml || '<div class="no-items" style="padding-left:28px">No topics yet — click + Topic to add one</div>'}
         </div>
       </div>`;
     }
@@ -635,7 +635,7 @@ ${catsHtml}
 <div class="deploy-bar">
   <button class="btn-deploy" id="deployBtn" data-action="deploy">
     <span id="deployIcon">↑</span>
-    <span id="deployLabel">Deploy to Git</span>
+    <span id="deployLabel">Deploy</span>
   </button>
   <div class="deploy-status" id="deployStatus"></div>
 </div>
@@ -743,7 +743,7 @@ ${catsHtml}
       const icon  = document.getElementById('deployIcon');
       btn.classList.remove('deploying');
       btn.disabled = false;
-      label.textContent = 'Deploy to Git';
+      label.textContent = 'Deploy';
       icon.textContent  = '\u2191';
       setStatus(msg.message, msg.success ? 'ok' : 'err');
       if (msg.success) setTimeout(function() { setStatus('', ''); }, 5000);

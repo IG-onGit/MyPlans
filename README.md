@@ -30,7 +30,7 @@ Search for **MyPlans** in the Extensions panel (`Ctrl+Shift+X`) and click **Inst
 ### From a `.vsix` file
 
 ```bash
-code --install-extension myplans-1.0.1.vsix
+code --install-extension myplans-1.0.2.vsix
 ```
 
 Or: Extensions panel → `⋯` menu → **Install from VSIX…**
@@ -125,7 +125,7 @@ Click any **category**, **topic**, or **task** header to collapse or expand it. 
 
 ## Git Deploy
 
-The **Deploy to Git** button at the bottom of the panel runs:
+The **Deploy** button at the bottom of the panel runs:
 
 ```bash
 git add *.yml *.yaml
@@ -160,7 +160,7 @@ There are no default keybindings. You can assign your own via **File → Prefere
 
 Available commands:
 - `myplans.refresh` - Refresh the panel
-- `myplans.deploy` - Deploy to Git
+- `myplans.deploy` - Deploy
 - `myplans.addCategory` - Add a new category
 
 ---

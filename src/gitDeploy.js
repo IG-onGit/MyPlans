@@ -2,7 +2,6 @@
 
 const { execSync } = require('child_process');
 const vscode = require('vscode');
-const path = require('path');
 
 /**
  * Stage all changes, commit with a timestamped message, and push to origin.
@@ -27,19 +26,19 @@ async function gitDeploy() {
     throw new Error('This workspace is not a Git repository.');
   }
 
-  // Stage all .yml/.yaml changes
-  run('git add "*.yml" "*.yaml" -A -- "*.yml" "*.yaml"');
+  // Stage all changes
+  run('git add -A');
 
-  // Check if there's anything to commit
-  let status;
+  // Check if there is anything staged to commit
+  let staged = '';
   try {
-    status = run('git diff --cached --name-only');
+    staged = run('git diff --cached --name-only');
   } catch {
-    status = '';
+    staged = '';
   }
 
-  if (!status) {
-    return { committed: false, message: 'Nothing to commit - all tasks are up to date.' };
+  if (!staged) {
+    return { committed: false, message: 'Nothing to commit — all tasks are up to date.' };
   }
 
   // Commit
