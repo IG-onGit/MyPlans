@@ -1,4 +1,4 @@
-name: Publish MyPlans to VS Code Marketplace
+name: Publish VS Code Extension
 
 on:
   push:
@@ -6,33 +6,26 @@ on:
       - main
 
 jobs:
-  publish:
-    name: Build & Publish
+  build-and-publish:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Checkout repo
         uses: actions/checkout@v4
 
-      - name: Set up Node.js
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: '20'
 
       - name: Install dependencies
         run: npm install
 
-      - name: Stamp version from tag into package.json
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          node -e "
-            const fs = require('fs');
-            const pkg = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-            pkg.version = '${VERSION}';
-            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2) + '\n');
-          "
+      - name: Build the extension
+        run: npm run build --if-present
 
-      - name: Package & Publish
-        env:
-          VSCE_TOKEN: ${{ secrets.VSCE_TOKEN }}
-        run: npx @vscode/vsce publish --no-dependencies --pat "$VSCE_TOKEN"
+      - name: Package the extension
+        run: npx @vscode/vsce package
+
+      - name: Publish to Marketplace
+        run: npx @vscode/vsce publish -p ${{ secrets.VSCE_TOKEN }}
