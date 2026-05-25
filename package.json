@@ -2,7 +2,7 @@
   "name": "myplans",
   "displayName": "MyPlans",
   "description": "Personal plans and daily tasks manager from YAML files",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "publisher": "phpshift",
   "engines": {
     "vscode": "^1.85.0"
@@ -45,6 +45,17 @@
       {
         "command": "myplans.addCategory",
         "title": "MyPlans: Add Category"
+      },
+      {
+        "command": "myplans.toggleSidebar",
+        "title": "MyPlans: Toggle Sidebar"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "myplans.toggleSidebar",
+        "key": "ctrl+shift+m",
+        "mac": "cmd+shift+m"
       }
     ]
   },

@@ -2,7 +2,7 @@
 
 const vscode = require('vscode');
 const fs = require('fs');
-const { toggleLineComment } = require('./yamlParser');
+const { toggleLineComment, toggleAsap } = require('./yamlParser');
 const { getGitStatus } = require('./gitDeploy');
 const {
   createCategory, createTopic, addTask, addStep,
@@ -17,7 +17,7 @@ class MyPlansWebviewProvider {
     this._context = context;
     this._scanner = scanner;
     this._view = null;
-    this._openSections = new Set(); // persists across refreshes
+    this._openSections = new Set();
   }
 
   resolveWebviewView(webviewView) {
@@ -40,6 +40,7 @@ class MyPlansWebviewProvider {
       switch (msg.command) {
         case 'refresh':           await this._refresh();                                                              break;
         case 'toggleStep':        await this._toggleStep(msg.filePath, msg.lineIndex);                               break;
+        case 'toggleAsap':        await this._toggleAsap(msg.filePath, msg.lineIndex);                               break;
         case 'openFile':          await this._openFile(msg.filePath, msg.lineIndex);                                 break;
         case 'addCategory':       await this._addCategory();                                                         break;
         case 'addTopic':          await this._addTopic(msg.categoryFolder);                                          break;
@@ -56,7 +57,7 @@ class MyPlansWebviewProvider {
         case 'deleteTopic':       await this._deleteTopic(msg.filePath, msg.name);                                  break;
         case 'deleteTask':        await this._deleteTask(msg.filePath, msg.taskLineIndex, msg.stepLineIndices);     break;
         case 'deleteStep':        await this._deleteStep(msg.filePath, msg.lineIndex);                              break;
-        case 'saveState':          this._openSections = new Set(msg.openSections);                                     break;
+        case 'saveState':          this._openSections = new Set(msg.openSections);                                   break;
       }
     });
   }
@@ -73,6 +74,14 @@ class MyPlansWebviewProvider {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
       fs.writeFileSync(filePath, toggleLineComment(content, Number(lineIndex)), 'utf8');
+      await this._refresh();
+    } catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
+  }
+
+  async _toggleAsap(filePath, lineIndex) {
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      fs.writeFileSync(filePath, toggleAsap(content, Number(lineIndex)), 'utf8');
       await this._refresh();
     } catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
@@ -235,10 +244,12 @@ function buildHtml(categories, gitStatus, openSections) {
     for (let ci = 0; ci < categories.length; ci++) {
       const cat = categories[ci];
       let catSteps = 0, catDone = 0;
+      let catHasAsap = false;
       for (const t of cat.topics)
         for (const tk of t.tasks) {
           catSteps += tk.steps.length;
           catDone  += tk.steps.filter(s => s.commented).length;
+          if (tk.steps.some(s => s.asap)) catHasAsap = true;
         }
       const catPct = catSteps > 0 ? Math.round((catDone / catSteps) * 100) : 0;
 
@@ -246,74 +257,96 @@ function buildHtml(categories, gitStatus, openSections) {
       for (let ti = 0; ti < cat.topics.length; ti++) {
         const topic = cat.topics[ti];
         let topicSteps = 0, topicDone = 0;
+        let topicHasAsap = false;
         for (const tk of topic.tasks) {
           topicSteps += tk.steps.length;
           topicDone  += tk.steps.filter(s => s.commented).length;
+          if (tk.steps.some(s => s.asap)) topicHasAsap = true;
         }
 
         let tasksHtml = '';
         for (let tki = 0; tki < topic.tasks.length; tki++) {
           const task = topic.tasks[tki];
           const taskDone = task.steps.filter(s => s.commented).length;
+          const taskHasAsap = task.steps.some(s => s.asap);
           const stepIndices = task.steps.map(s => s.lineIndex);
 
           let stepsHtml = '';
           for (let si = 0; si < task.steps.length; si++) {
             const step = task.steps[si];
             stepsHtml += `
-            <div class="step-row${step.commented ? ' done' : ''}">
+            <div class="step-row${step.commented ? ' done' : ''}${step.asap ? ' asap' : ''}"
+                 tabindex="0"
+                 data-nav="step"
+                 data-filepath="${attr(topic.absolutePath)}"
+                 data-lineindex="${step.lineIndex}">
               <label class="check-wrap">
                 <input type="checkbox" class="step-cb"
                   ${step.commented ? 'checked' : ''}
                   data-action="toggleStep"
                   data-filepath="${attr(topic.absolutePath)}"
                   data-lineindex="${step.lineIndex}"
+                  tabindex="-1"
                 />
               </label>
+              <span class="asap-dot${step.asap ? ' active' : ''}"
+                    title="${step.asap ? 'Remove ASAP flag' : 'Mark as ASAP'}"
+                    data-action="toggleAsap"
+                    data-filepath="${attr(topic.absolutePath)}"
+                    data-lineindex="${step.lineIndex}"></span>
               <span class="step-text">${esc(step.text)}</span>
               <div class="row-actions">
+                <button class="goto-btn always-visible" title="Open file at this line"
+                  data-action="openFile"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${step.lineIndex}"
+                  tabindex="-1">↗</button>
                 <button class="icon-btn edit-btn" title="Edit step"
                   data-action="editStep"
                   data-filepath="${attr(topic.absolutePath)}"
                   data-lineindex="${step.lineIndex}"
-                  data-currenttext="${attr(step.text)}">✎</button>
+                  data-currenttext="${attr(step.text)}"
+                  tabindex="-1">✎</button>
                 <button class="icon-btn del-btn" title="Delete step"
                   data-action="deleteStep"
                   data-filepath="${attr(topic.absolutePath)}"
-                  data-lineindex="${step.lineIndex}">✕</button>
-                <button class="goto-btn always-visible" title="Open file at this line"
-                  data-action="openFile"
-                  data-filepath="${attr(topic.absolutePath)}"
-                  data-lineindex="${step.lineIndex}">↗</button>
+                  data-lineindex="${step.lineIndex}"
+                  tabindex="-1">✕</button>
               </div>
             </div>`;
           }
 
           tasksHtml += `
           <div class="task-block">
-            <div class="task-header" data-toggle="tkb-${ci}-${ti}-${tki}">
+            <div class="task-header" data-toggle="tkb-${ci}-${ti}-${tki}"
+                 tabindex="0" data-nav="task" data-bodyid="tkb-${ci}-${ti}-${tki}">
               <span class="task-chevron${isOpen(`tkb-${ci}-${ti}-${tki}`) ? ' open' : ''}" data-chevron="tkb-${ci}-${ti}-${tki}">▶</span>
+              ${taskHasAsap ? '<span class="bubble-dot" title="Has ASAP steps"></span>' : ''}
               <span class="task-name">${esc(task.name)}</span>
               <span class="task-badge">${taskDone}/${task.steps.length}</span>
               <div class="row-actions task-actions">
                 <button class="add-btn"
                   data-action="addStep"
                   data-filepath="${attr(topic.absolutePath)}"
-                  data-tasklineindex="${task.taskLineIndex}">+ Step</button>
+                  data-tasklineindex="${task.taskLineIndex}"
+                  tabindex="-1">+ Step</button>
+                <button class="goto-btn" title="Open file at task"
+                  data-action="openFile"
+                  data-filepath="${attr(topic.absolutePath)}"
+                  data-lineindex="${task.taskLineIndex}"
+                  tabindex="-1">↗</button>
                 <button class="icon-btn edit-btn" title="Rename task"
                   data-action="editTask"
                   data-filepath="${attr(topic.absolutePath)}"
                   data-tasklineindex="${task.taskLineIndex}"
-                  data-currentname="${attr(task.name)}">✎</button>
+                  data-currentname="${attr(task.name)}"
+                  tabindex="-1">✎</button>
                 <button class="icon-btn del-btn" title="Delete task"
                   data-action="deleteTask"
                   data-filepath="${attr(topic.absolutePath)}"
                   data-tasklineindex="${task.taskLineIndex}"
-                  data-steplineindices="${attr(JSON.stringify(stepIndices))}">✕</button>
-                <button class="goto-btn" title="Open file at task"
-                  data-action="openFile"
-                  data-filepath="${attr(topic.absolutePath)}"
-                  data-lineindex="${task.taskLineIndex}">↗</button>
+                  data-steplineindices="${attr(JSON.stringify(stepIndices))}"
+                  tabindex="-1">✕</button>
               </div>
             </div>
             <div class="steps-body${isOpen(`tkb-${ci}-${ti}-${tki}`) ? '' : ' closed'}" id="tkb-${ci}-${ti}-${tki}">
@@ -324,27 +357,33 @@ function buildHtml(categories, gitStatus, openSections) {
 
         topicsHtml += `
         <div class="topic-block">
-          <div class="topic-header" data-toggle="tpb-${ci}-${ti}">
+          <div class="topic-header" data-toggle="tpb-${ci}-${ti}"
+               tabindex="0" data-nav="topic" data-bodyid="tpb-${ci}-${ti}">
             <span class="topic-chevron${isOpen(`tpb-${ci}-${ti}`) ? ' open' : ''}" data-chevron="tpb-${ci}-${ti}">▶</span>
             <span class="file-icon">◈</span>
+            ${topicHasAsap ? '<span class="bubble-dot" title="Has ASAP steps"></span>' : ''}
             <span class="topic-name">${esc(topic.name)}</span>
             <span class="topic-badge">${topicDone}/${topicSteps}</span>
             <div class="row-actions topic-actions">
               <button class="add-btn"
                 data-action="addTask"
-                data-filepath="${attr(topic.absolutePath)}">+ Task</button>
-              <button class="icon-btn edit-btn" title="Rename topic"
-                data-action="editTopic"
                 data-filepath="${attr(topic.absolutePath)}"
-                data-currentname="${attr(topic.name)}">✎</button>
-              <button class="icon-btn del-btn" title="Delete topic"
-                data-action="deleteTopic"
-                data-filepath="${attr(topic.absolutePath)}"
-                data-name="${attr(topic.name)}">✕</button>
+                tabindex="-1">+ Task</button>
               <button class="goto-btn" title="Open file"
                 data-action="openFile"
                 data-filepath="${attr(topic.absolutePath)}"
-                data-lineindex="0">↗</button>
+                data-lineindex="0"
+                tabindex="-1">↗</button>
+              <button class="icon-btn edit-btn" title="Rename topic"
+                data-action="editTopic"
+                data-filepath="${attr(topic.absolutePath)}"
+                data-currentname="${attr(topic.name)}"
+                tabindex="-1">✎</button>
+              <button class="icon-btn del-btn" title="Delete topic"
+                data-action="deleteTopic"
+                data-filepath="${attr(topic.absolutePath)}"
+                data-name="${attr(topic.name)}"
+                tabindex="-1">✕</button>
             </div>
           </div>
           <div class="topic-body${isOpen(`tpb-${ci}-${ti}`) ? '' : ' closed'}" id="tpb-${ci}-${ti}">
@@ -355,9 +394,11 @@ function buildHtml(categories, gitStatus, openSections) {
 
       catsHtml += `
       <div class="cat-section">
-        <div class="cat-header" data-toggle="cb-${ci}">
+        <div class="cat-header" data-toggle="cb-${ci}"
+             tabindex="0" data-nav="cat" data-bodyid="cb-${ci}">
           <span class="cat-chevron${isOpen(`cb-${ci}`) ? ' open' : ''}" data-chevron="cb-${ci}">▶</span>
           <span class="folder-icon">▣</span>
+          ${catHasAsap ? '<span class="bubble-dot" title="Has ASAP steps"></span>' : ''}
           <span class="cat-name">${esc(cat.name)}</span>
           <div class="mini-bar" title="${catDone}/${catSteps}">
             <div class="mini-fill" style="width:${catPct}%"></div>
@@ -366,15 +407,18 @@ function buildHtml(categories, gitStatus, openSections) {
           <div class="row-actions cat-actions">
             <button class="add-btn"
               data-action="addTopic"
-              data-categoryfolder="${attr(cat.folderPath)}">+ Topic</button>
+              data-categoryfolder="${attr(cat.folderPath)}"
+              tabindex="-1">+ Topic</button>
             <button class="icon-btn edit-btn" title="Rename category"
               data-action="editCategory"
               data-folderpath="${attr(cat.folderPath)}"
-              data-currentname="${attr(cat.name)}">✎</button>
+              data-currentname="${attr(cat.name)}"
+              tabindex="-1">✎</button>
             <button class="icon-btn del-btn" title="Delete category"
               data-action="deleteCategory"
               data-folderpath="${attr(cat.folderPath)}"
-              data-name="${attr(cat.name)}">✕</button>
+              data-name="${attr(cat.name)}"
+              tabindex="-1">✕</button>
           </div>
         </div>
         <div class="cat-body${isOpen(`cb-${ci}`) ? '' : ' closed'}" id="cb-${ci}">
@@ -419,6 +463,11 @@ body {
 ::-webkit-scrollbar { width: 5px; }
 ::-webkit-scrollbar-track { background: var(--bg2); }
 ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+
+/* ── focus ring for keyboard nav ── */
+[tabindex="0"]:focus { outline: 1px solid var(--blue); outline-offset: -1px; }
+[tabindex="0"]:focus:not(:focus-visible) { outline: none; }
+[tabindex="0"]:focus-visible { outline: 1px solid var(--blue); outline-offset: -1px; }
 
 /* ── header ── */
 .header {
@@ -469,7 +518,6 @@ body {
 .topic-header:hover .topic-actions,
 .task-header:hover .task-actions,
 .step-row:hover .row-actions { opacity: 1; }
-/* Steps keep goto slightly visible always */
 .step-row .row-actions { opacity: 0; }
 .step-row:hover .row-actions { opacity: 1; }
 
@@ -483,6 +531,39 @@ body {
 .edit-btn:hover { color: var(--blue); background: rgba(102,217,239,.12); }
 .del-btn { color: var(--muted); }
 .del-btn:hover { color: var(--red); background: rgba(249,38,114,.12); }
+
+/* ── ASAP dot on step ── */
+.asap-dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  flex-shrink: 0; cursor: pointer;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  transition: all var(--ease);
+  margin-right: 5px;
+}
+.asap-dot:hover { border-color: var(--red); background: rgba(249,38,114,.2); }
+.asap-dot.active {
+  background: var(--red);
+  border-color: var(--red);
+  box-shadow: 0 0 5px rgba(249,38,114,.6);
+  animation: pulse-asap 2s ease-in-out infinite;
+}
+@keyframes pulse-asap {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.7; transform: scale(0.82); }
+}
+
+/* ── bubble dot for task/topic/category ── */
+.bubble-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--red);
+  flex-shrink: 0;
+  box-shadow: 0 0 4px rgba(249,38,114,.5);
+}
+
+/* ── step row ASAP highlight ── */
+.step-row.asap { background: rgba(249,38,114,.06); }
+.step-row.asap .step-text { color: #ffb3c6; }
 
 /* ── category ── */
 .cat-section { border-bottom: 1px solid var(--border); }
@@ -544,7 +625,7 @@ body {
 /* checkbox */
 .check-wrap {
   display: flex; align-items: center; flex-shrink: 0;
-  padding-right: 8px; cursor: pointer;
+  padding-right: 6px; cursor: pointer;
 }
 .step-cb {
   appearance: none; -webkit-appearance: none;
@@ -659,7 +740,7 @@ ${catsHtml}
 </div>
 
 <div class="deploy-bar">
-  <button class="btn-deploy" id="deployBtn" data-action="deploy"${deployDisabled ? ' disabled title=\"' + (!isGit ? 'Git not initialized' : 'No uncommitted changes') + '\"' : ''}>
+  <button class="btn-deploy" id="deployBtn" data-action="deploy"${deployDisabled ? ' disabled title="' + (!isGit ? 'Git not initialized' : 'No uncommitted changes') + '"' : ''}>
     <span id="deployIcon">↑</span>
     <span id="deployLabel">Deploy</span>
   </button>
@@ -670,6 +751,7 @@ ${catsHtml}
 (function() {
   const vscode = acquireVsCodeApi();
 
+  /* ─── Click handler ─────────────────────────────────────── */
   document.addEventListener('click', function(e) {
     const toggleTarget = e.target.closest('[data-toggle]');
     const actionTarget = e.target.closest('[data-action]');
@@ -695,6 +777,137 @@ ${catsHtml}
     }
   });
 
+  /* ─── Keyboard navigation ───────────────────────────────── */
+  // Build flat list of all focusable nav items in DOM order
+  function getNavItems() {
+    return Array.from(document.querySelectorAll('[data-nav]')).filter(el => {
+      // Skip items inside closed containers
+      let parent = el.parentElement;
+      while (parent) {
+        if (parent.classList.contains('closed')) return false;
+        parent = parent.parentElement;
+      }
+      return true;
+    });
+  }
+
+  document.addEventListener('keydown', function(e) {
+    const focused = document.activeElement;
+    if (!focused || !focused.dataset.nav) return;
+
+    const nav = focused.dataset.nav; // cat | topic | task | step
+    const bodyId = focused.dataset.bodyid;
+
+    switch (e.key) {
+      case 'ArrowDown': {
+        e.preventDefault();
+        const items = getNavItems();
+        const idx = items.indexOf(focused);
+        if (idx < items.length - 1) items[idx + 1].focus();
+        break;
+      }
+      case 'ArrowUp': {
+        e.preventDefault();
+        const items = getNavItems();
+        const idx = items.indexOf(focused);
+        if (idx > 0) items[idx - 1].focus();
+        break;
+      }
+      case 'ArrowRight': {
+        e.preventDefault();
+        if (nav === 'step') break; // steps have no children
+        if (bodyId) {
+          const body = document.getElementById(bodyId);
+          if (body && body.classList.contains('closed')) {
+            // Open it
+            openSection(bodyId);
+          } else {
+            // Already open — move focus to first child
+            const items = getNavItems();
+            const idx = items.indexOf(focused);
+            if (idx < items.length - 1) items[idx + 1].focus();
+          }
+        }
+        break;
+      }
+      case 'ArrowLeft': {
+        e.preventDefault();
+        if (nav === 'step') {
+          // Move focus to parent task header
+          const taskHeader = focused.closest('.steps-body')
+            && focused.closest('.steps-body').previousElementSibling;
+          if (taskHeader && taskHeader.dataset.nav) taskHeader.focus();
+          break;
+        }
+        if (bodyId) {
+          const body = document.getElementById(bodyId);
+          if (body && !body.classList.contains('closed')) {
+            // Collapse it
+            closeSection(bodyId);
+          } else {
+            // Already closed — move to parent
+            moveToParent(focused);
+          }
+        }
+        break;
+      }
+      case 'Enter': {
+        if (nav === 'step') {
+          e.preventDefault();
+          // Toggle checkbox
+          const cb = focused.querySelector('.step-cb');
+          if (cb) {
+            vscode.postMessage({
+              command: 'toggleStep',
+              filePath: cb.dataset.filepath,
+              lineIndex: Number(cb.dataset.lineindex)
+            });
+          }
+        } else if (bodyId) {
+          e.preventDefault();
+          toggleSection(bodyId);
+        }
+        break;
+      }
+    }
+  });
+
+  function moveToParent(el) {
+    const nav = el.dataset.nav;
+    let parentHeader = null;
+    if (nav === 'task') {
+      // Find parent topic-header
+      const topicBody = el.closest('.topic-body');
+      if (topicBody) parentHeader = topicBody.previousElementSibling;
+    } else if (nav === 'topic') {
+      // Find parent cat-header
+      const catBody = el.closest('.cat-body');
+      if (catBody) parentHeader = catBody.previousElementSibling;
+    }
+    if (parentHeader && parentHeader.dataset.nav) parentHeader.focus();
+  }
+
+  function openSection(bodyId) {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    body.classList.remove('closed');
+    const chev = document.querySelector('[data-chevron="' + bodyId + '"]');
+    if (chev) chev.classList.add('open');
+    _openSet.add(bodyId);
+    _saveState();
+  }
+
+  function closeSection(bodyId) {
+    const body = document.getElementById(bodyId);
+    if (!body) return;
+    body.classList.add('closed');
+    const chev = document.querySelector('[data-chevron="' + bodyId + '"]');
+    if (chev) chev.classList.remove('open');
+    _openSet.delete(bodyId);
+    _saveState();
+  }
+
+  /* ─── Action dispatcher ────────────────────────────────── */
   function handleAction(el) {
     const action = el.dataset.action;
     const d = el.dataset;
@@ -714,6 +927,8 @@ ${catsHtml}
         vscode.postMessage({ command: 'refresh' }); break;
       case 'deploy':
         doDeploy(); break;
+      case 'toggleAsap':
+        vscode.postMessage({ command: 'toggleAsap', filePath: d.filepath, lineIndex: Number(d.lineindex) }); break;
       // edit
       case 'editCategory':
         vscode.postMessage({ command: 'editCategory', folderPath: d.folderpath, currentName: d.currentname }); break;
@@ -735,7 +950,7 @@ ${catsHtml}
     }
   }
 
-  // Track which sections are open (client-side mirror of provider._openSections)
+  /* ─── Section state ────────────────────────────────────── */
   const _openSet = new Set(
     Array.from(document.querySelectorAll('[id]')).filter(el =>
       (el.classList.contains('cat-body') ||
@@ -759,6 +974,7 @@ ${catsHtml}
     _saveState();
   }
 
+  /* ─── Deploy ───────────────────────────────────────────── */
   function doDeploy() {
     const btn   = document.getElementById('deployBtn');
     if (btn.disabled) return;
@@ -778,6 +994,7 @@ ${catsHtml}
     el.className = 'deploy-status' + (type ? ' ' + type : '');
   }
 
+  /* ─── Messages from extension ──────────────────────────── */
   window.addEventListener('message', function(e) {
     const msg = e.data;
     if (msg.command === 'deployDone') {
@@ -790,6 +1007,11 @@ ${catsHtml}
       icon.textContent  = '\u2191';
       setStatus(msg.message, msg.success ? 'ok' : 'err');
       if (msg.success) setTimeout(function() { setStatus('', ''); }, 5000);
+    }
+    if (msg.command === 'focusFirst') {
+      // Focus first navigable item
+      const first = document.querySelector('[data-nav]');
+      if (first) first.focus();
     }
   });
 })();

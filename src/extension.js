@@ -22,6 +22,24 @@ function activate(context) {
   context.subscriptions.push(
     vscode.commands.registerCommand('myplans.addCategory', () => provider._addCategory())
   );
+
+  // Toggle sidebar: focus if not visible/focused, hide otherwise
+  context.subscriptions.push(
+    vscode.commands.registerCommand('myplans.toggleSidebar', async () => {
+      const view = provider._view;
+      // If the view is visible and focused, move focus back to editor
+      if (view && view.visible) {
+        await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
+      } else {
+        // Show and focus the sidebar panel, then focus first item in webview
+        await vscode.commands.executeCommand('myplans.mainView.focus');
+        // Notify webview to focus first navigable item
+        if (provider._view) {
+          provider._view.webview.postMessage({ command: 'focusFirst' });
+        }
+      }
+    })
+  );
 }
 
 function deactivate() {}
