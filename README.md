@@ -25,34 +25,7 @@ A personal task manager that reads your `.yml` / `.yaml` project files and gives
 
 ## Installation
 
-### From the VS Code Marketplace
-
 Search for **MyPlans** in the Extensions panel (`Ctrl+Shift+X`) and click **Install**.
-
-### From a `.vsix` file
-
-```bash
-code --install-extension myplans-1.0.4.vsix
-```
-
-Or: Extensions panel → `⋯` menu → **Install from VSIX…**
-
-### From source (development)
-
-**Prerequisites:** Node.js 18+, VS Code 1.85+
-
-```bash
-# 1 – Copy the extension folder into your workspace
-cd myplans
-
-# 2 – Install dev dependencies
-npm install
-
-# 3 – Open in VS Code
-code .
-
-# 4 – Press F5 to launch the Extension Development Host
-```
 
 ---
 
