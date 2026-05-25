@@ -4,6 +4,33 @@ const { execSync } = require('child_process');
 const vscode = require('vscode');
 
 /**
+ * Returns git status for the workspace.
+ * @returns {{ isGit: boolean, hasChanges: boolean }}
+ */
+function getGitStatus() {
+  const workspaceFolders = vscode.workspace.workspaceFolders;
+  if (!workspaceFolders || workspaceFolders.length === 0) {
+    return { isGit: false, hasChanges: false };
+  }
+  const cwd = workspaceFolders[0].uri.fsPath;
+  const run = (cmd) => execSync(cmd, { cwd, stdio: 'pipe' }).toString().trim();
+
+  try {
+    run('git rev-parse --git-dir');
+  } catch {
+    return { isGit: false, hasChanges: false };
+  }
+
+  try {
+    // Porcelain output: empty string = no changes
+    const status = run('git status --porcelain');
+    return { isGit: true, hasChanges: status.length > 0 };
+  } catch {
+    return { isGit: true, hasChanges: false };
+  }
+}
+
+/**
  * Stage all changes, commit with a timestamped message, and push to origin.
  * Runs in the workspace root directory.
  */
@@ -54,4 +81,4 @@ async function gitDeploy() {
   return { committed: true, message: `Deployed: "${message}"` };
 }
 
-module.exports = { gitDeploy };
+module.exports = { gitDeploy, getGitStatus };

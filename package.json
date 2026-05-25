@@ -2,27 +2,50 @@
   "name": "myplans",
   "displayName": "MyPlans",
   "description": "Personal plans and daily tasks manager from YAML files",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "publisher": "phpshift",
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
-  "activationEvents": ["onStartupFinished"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "main": "./src/extension.js",
   "contributes": {
     "viewsContainers": {
       "activitybar": [
-        { "id": "myplans-sidebar", "title": "MyPlans", "icon": "media/icon.svg" }
+        {
+          "id": "myplans-sidebar",
+          "title": "MyPlans",
+          "icon": "media/icon.svg"
+        }
       ]
     },
     "views": {
       "myplans-sidebar": [
-        { "type": "webview", "id": "myplans.mainView", "name": "Tasks" }
+        {
+          "type": "webview",
+          "id": "myplans.mainView",
+          "name": "Tasks"
+        }
       ]
     },
     "commands": [
-      { "command": "myplans.refresh",     "title": "MyPlans: Refresh" },
-      { "command": "myplans.deploy",      "title": "MyPlans: Deploy" },
-      { "command": "myplans.addCategory", "title": "MyPlans: Add Category" }
+      {
+        "command": "myplans.refresh",
+        "title": "MyPlans: Refresh"
+      },
+      {
+        "command": "myplans.deploy",
+        "title": "MyPlans: Deploy"
+      },
+      {
+        "command": "myplans.addCategory",
+        "title": "MyPlans: Add Category"
+      }
     ]
   },
   "scripts": {
@@ -35,5 +58,6 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/IG-onGit/MyPlans"
-  }
+  },
+  "icon": "media/icon.png"
 }

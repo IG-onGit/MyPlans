@@ -1,5 +1,7 @@
 # MyPlans - VS Code Extension
 
+![MyPlans Extension Poster](media/poster.png)
+
 A personal task manager that reads your `.yml` / `.yaml` project files and gives you a Monokai-themed sidebar panel to plan, track, and deploy your work - without leaving VS Code.
 
 ---
@@ -30,7 +32,7 @@ Search for **MyPlans** in the Extensions panel (`Ctrl+Shift+X`) and click **Inst
 ### From a `.vsix` file
 
 ```bash
-code --install-extension myplans-1.0.2.vsix
+code --install-extension myplans-1.0.3.vsix
 ```
 
 Or: Extensions panel → `⋯` menu → **Install from VSIX…**

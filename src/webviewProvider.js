@@ -3,6 +3,7 @@
 const vscode = require('vscode');
 const fs = require('fs');
 const { toggleLineComment } = require('./yamlParser');
+const { getGitStatus } = require('./gitDeploy');
 const {
   createCategory, createTopic, addTask, addStep,
   renameCategory, deleteCategory,
@@ -61,7 +62,8 @@ class MyPlansWebviewProvider {
   async _refresh() {
     const cats = await this._scanner.scanWorkspace();
     if (this._view) {
-      this._view.webview.html = buildHtml(cats);
+      const gitStatus = getGitStatus();
+      this._view.webview.html = buildHtml(cats, gitStatus);
     }
   }
 
@@ -200,7 +202,10 @@ class MyPlansWebviewProvider {
 function attr(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 function esc(v)  { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function buildHtml(categories) {
+function buildHtml(categories, gitStatus) {
+  const isGit = gitStatus && gitStatus.isGit;
+  const hasChanges = gitStatus && gitStatus.hasChanges;
+  const deployDisabled = !isGit || !hasChanges;
   let totalSteps = 0, doneSteps = 0, totalTasks = 0, totalTopics = 0;
   for (const cat of categories) {
     totalTopics += cat.topics.length;
@@ -578,6 +583,21 @@ body {
 .no-items { padding: 5px 10px; font-size: 10px; color: var(--muted); font-family: var(--mono); }
 
 /* ── deploy bar ── */
+.change-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--orange); flex-shrink: 0;
+  box-shadow: 0 0 5px rgba(253,151,31,.6);
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.6; transform: scale(0.85); }
+}
+.no-git-badge {
+  font-family: var(--mono); font-size: 9px; color: var(--muted);
+  background: var(--bg4); border: 1px solid var(--border);
+  border-radius: 3px; padding: 1px 5px; flex-shrink: 0;
+}
 .deploy-bar {
   position: fixed; bottom: 0; left: 0; right: 0;
   padding: 7px 10px; background: var(--bg2); border-top: 1px solid var(--border); z-index: 200;
@@ -593,6 +613,8 @@ body {
 .btn-deploy:hover { background: linear-gradient(135deg,#c0e86b,var(--green)); transform: translateY(-1px); box-shadow: 0 4px 12px rgba(166,226,46,.22); }
 .btn-deploy:active { transform: translateY(0); }
 .btn-deploy.deploying { background: var(--bg4); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; }
+.btn-deploy:disabled { background: var(--bg4); color: var(--muted); cursor: not-allowed; transform: none; box-shadow: none; opacity: 0.55; }
+.btn-deploy:disabled:hover { background: var(--bg4); transform: none; box-shadow: none; }
 .deploy-status { margin-top: 4px; font-family: var(--mono); font-size: 10px; color: var(--muted); text-align: center; min-height: 13px; }
 .deploy-status.ok { color: var(--green); }
 .deploy-status.err { color: var(--red); }
@@ -607,7 +629,7 @@ body {
 
 <div class="header">
   <div class="header-top">
-    <div class="logo">☑ MyPlans</div>
+    <div class="logo">☑ MyPlans${hasChanges ? '<span class=\"change-dot\" title=\"Uncommitted changes\"></span>' : ''}${!isGit ? '<span class=\"no-git-badge\" title=\"Git not initialized\">no git</span>' : ''}</div>
     <div class="header-right">
       <button class="top-btn cat" data-action="addCategory">+ Category</button>
       <button class="top-btn refresh" data-action="refresh" title="Refresh">⟳</button>
@@ -633,7 +655,7 @@ ${catsHtml}
 </div>
 
 <div class="deploy-bar">
-  <button class="btn-deploy" id="deployBtn" data-action="deploy">
+  <button class="btn-deploy" id="deployBtn" data-action="deploy"${deployDisabled ? ' disabled title=\"' + (!isGit ? 'Git not initialized' : 'No uncommitted changes') + '\"' : ''}>
     <span id="deployIcon">↑</span>
     <span id="deployLabel">Deploy</span>
   </button>
@@ -719,6 +741,7 @@ ${catsHtml}
 
   function doDeploy() {
     const btn   = document.getElementById('deployBtn');
+    if (btn.disabled) return;
     const label = document.getElementById('deployLabel');
     const icon  = document.getElementById('deployIcon');
     btn.classList.add('deploying');
