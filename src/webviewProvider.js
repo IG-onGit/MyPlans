@@ -18,6 +18,7 @@ class MyPlansWebviewProvider {
     this._scanner = scanner;
     this._view = null;
     this._openSections = new Set();
+    this._focusLineIndex = null; // lineIndex to restore focus to after refresh
   }
 
   resolveWebviewView(webviewView) {
@@ -39,7 +40,7 @@ class MyPlansWebviewProvider {
     webviewView.webview.onDidReceiveMessage(async (msg) => {
       switch (msg.command) {
         case 'refresh':           await this._refresh();                                                              break;
-        case 'toggleStep':        await this._toggleStep(msg.filePath, msg.lineIndex);                               break;
+        case 'toggleStep':        await this._toggleStep(msg.filePath, msg.lineIndex);               break;
         case 'toggleAsap':        await this._toggleAsap(msg.filePath, msg.lineIndex);                               break;
         case 'openFile':          await this._openFile(msg.filePath, msg.lineIndex);                                 break;
         case 'addCategory':       await this._addCategory();                                                         break;
@@ -66,7 +67,9 @@ class MyPlansWebviewProvider {
     const cats = await this._scanner.scanWorkspace();
     if (this._view) {
       const gitStatus = getGitStatus();
-      this._view.webview.html = buildHtml(cats, gitStatus, this._openSections);
+      const focusLineIndex = this._focusLineIndex;
+      this._focusLineIndex = null;
+      this._view.webview.html = buildHtml(cats, gitStatus, this._openSections, focusLineIndex);
     }
   }
 
@@ -74,6 +77,7 @@ class MyPlansWebviewProvider {
     try {
       const content = fs.readFileSync(filePath, 'utf8');
       fs.writeFileSync(filePath, toggleLineComment(content, Number(lineIndex)), 'utf8');
+      this._focusLineIndex = Number(lineIndex); // bake focus target into next render
       await this._refresh();
     } catch (e) { vscode.window.showErrorMessage(`MyPlans: ${e.message}`); }
   }
@@ -213,7 +217,7 @@ class MyPlansWebviewProvider {
 function attr(v) { return String(v ?? '').replace(/&/g,'&amp;').replace(/"/g,'&quot;'); }
 function esc(v)  { return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-function buildHtml(categories, gitStatus, openSections) {
+function buildHtml(categories, gitStatus, openSections, focusLineIndex) {
   openSections = openSections || new Set();
   const isOpen = (id) => openSections.has(id);
   const isGit = gitStatus && gitStatus.isGit;
@@ -751,6 +755,15 @@ ${catsHtml}
 (function() {
   const vscode = acquireVsCodeApi();
 
+  /* ─── Boot: restore focus after keyboard-triggered toggle ── */
+  const _bootFocusLineIndex = ${focusLineIndex !== null && focusLineIndex !== undefined ? focusLineIndex : 'null'};
+  if (_bootFocusLineIndex !== null) {
+    requestAnimationFrame(function() {
+      const target = document.querySelector('.step-row[data-lineindex="' + _bootFocusLineIndex + '"]');
+      if (target) target.focus();
+    });
+  }
+
   /* ─── Click handler ─────────────────────────────────────── */
   document.addEventListener('click', function(e) {
     const toggleTarget = e.target.closest('[data-toggle]');
@@ -854,7 +867,7 @@ ${catsHtml}
       case 'Enter': {
         if (nav === 'step') {
           e.preventDefault();
-          // Toggle checkbox
+          // Toggle checkbox; focus is restored via _bootFocusLineIndex baked into next render
           const cb = focused.querySelector('.step-cb');
           if (cb) {
             vscode.postMessage({

@@ -23,20 +23,24 @@ function activate(context) {
     vscode.commands.registerCommand('myplans.addCategory', () => provider._addCategory())
   );
 
-  // Toggle sidebar: focus if not visible/focused, hide otherwise
+  // Ctrl+Shift+M: always bring focus into the webview.
+  // Only retreat to the editor when the webview is already the active element.
   context.subscriptions.push(
     vscode.commands.registerCommand('myplans.toggleSidebar', async () => {
       const view = provider._view;
-      // If the view is visible and focused, move focus back to editor
-      if (view && view.visible) {
+      const webviewFocused = view && view.visible && view.webview.active === true;
+      if (webviewFocused) {
+        // Already focused inside webview — return focus to editor
         await vscode.commands.executeCommand('workbench.action.focusActiveEditorGroup');
       } else {
-        // Show and focus the sidebar panel, then focus first item in webview
+        // Reveal the sidebar view and grab focus regardless of where cursor is
         await vscode.commands.executeCommand('myplans.mainView.focus');
-        // Notify webview to focus first navigable item
-        if (provider._view) {
-          provider._view.webview.postMessage({ command: 'focusFirst' });
-        }
+        // Give the webview frame time to mount, then focus first nav item
+        setTimeout(() => {
+          if (provider._view) {
+            provider._view.webview.postMessage({ command: 'focusFirst' });
+          }
+        }, 100);
       }
     })
   );
