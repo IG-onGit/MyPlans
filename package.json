@@ -2,7 +2,7 @@
   "name": "myplans",
   "displayName": "MyPlans",
   "description": "Personal plans and daily tasks manager from YAML files",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "publisher": "phpshift",
   "engines": {
     "vscode": "^1.85.0"

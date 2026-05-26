@@ -364,7 +364,6 @@ function buildHtml(categories, gitStatus, openSections, focusLineIndex) {
           <div class="topic-header" data-toggle="tpb-${ci}-${ti}"
                tabindex="0" data-nav="topic" data-bodyid="tpb-${ci}-${ti}">
             <span class="topic-chevron${isOpen(`tpb-${ci}-${ti}`) ? ' open' : ''}" data-chevron="tpb-${ci}-${ti}">▶</span>
-            <span class="file-icon">◈</span>
             ${topicHasAsap ? '<span class="bubble-dot" title="Has ASAP steps"></span>' : ''}
             <span class="topic-name">${esc(topic.name)}</span>
             <span class="topic-badge">${topicDone}/${topicSteps}</span>
@@ -401,7 +400,6 @@ function buildHtml(categories, gitStatus, openSections, focusLineIndex) {
         <div class="cat-header" data-toggle="cb-${ci}"
              tabindex="0" data-nav="cat" data-bodyid="cb-${ci}">
           <span class="cat-chevron${isOpen(`cb-${ci}`) ? ' open' : ''}" data-chevron="cb-${ci}">▶</span>
-          <span class="folder-icon">▣</span>
           ${catHasAsap ? '<span class="bubble-dot" title="Has ASAP steps"></span>' : ''}
           <span class="cat-name">${esc(cat.name)}</span>
           <div class="mini-bar" title="${catDone}/${catSteps}">
@@ -732,11 +730,11 @@ body {
 </div>
 
 <div class="metrics">
-  <div class="chip"><span class="cl">cats</span><span class="cv">${categories.length}</span></div>
+  <div class="chip"><span class="cl">cats</span><span class="cv" style="color:var(--orange);">${categories.length}</span></div>
   <div class="chip b"><span class="cl">topics</span><span class="cv">${totalTopics}</span></div>
   <div class="chip"><span class="cl">tasks</span><span class="cv">${totalTasks}</span></div>
-  <div class="chip g"><span class="cl">done</span><span class="cv">${doneSteps}</span></div>
-  <div class="chip"><span class="cl">left</span><span class="cv">${totalSteps - doneSteps}</span></div>
+  <div class="chip g"><span class="cl">done</span><span class="cv" style="color:var(--green);">${doneSteps}</span></div>
+  <div class="chip"><span class="cl">left</span><span class="cv" style="color:var(--text);">${totalSteps - doneSteps}</span></div>
 </div>
 
 <div class="content">
